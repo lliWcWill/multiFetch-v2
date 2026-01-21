@@ -22,8 +22,9 @@ main (local development)
 ```
 
 ### Active Task
-- [x] Scaffold Next.js frontend (DONE)
+- [x] Phase 1 frontend UI complete (Data Terminal aesthetic)
 - [ ] Set up backend venv and test hot reload
+- [ ] Begin Phase 2: Flask API Core
 
 ---
 
@@ -54,6 +55,7 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [x] Set up GitHub Actions CI/CD workflow
 - [x] Create DEPLOYMENT.md guide
 - [x] Scaffold Next.js frontend
+- [x] Build frontend UI (sidebar config, URL input, results)
 - [ ] Verify both dev servers run with hot reload
 - [ ] Test Docker Compose dev environment
 - [ ] Commit Phase 1 complete
