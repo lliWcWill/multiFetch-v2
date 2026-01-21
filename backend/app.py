@@ -23,13 +23,16 @@ def create_app():
     def health():
         return jsonify({"status": "ok", "version": "2.0.0"})
 
-    # TODO: Register blueprints
+    # Register blueprints
+    from api.urls import urls_bp
+
+    app.register_blueprint(urls_bp, url_prefix="/api/urls")
+
+    # TODO: Register additional blueprints
     # from api.config import config_bp
-    # from api.urls import urls_bp
     # from api.jobs import jobs_bp
     # from api.tiktok import tiktok_bp
     # app.register_blueprint(config_bp, url_prefix="/api/config")
-    # app.register_blueprint(urls_bp, url_prefix="/api/urls")
     # app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
     # app.register_blueprint(tiktok_bp, url_prefix="/api/tiktok")
 

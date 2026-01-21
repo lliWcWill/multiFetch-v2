@@ -1,7 +1,7 @@
 # MultiFetch v2 - Progress Tracker
 
 **Last Updated**: 2026-01-21
-**Current Phase**: 1 - Project Setup
+**Current Phase**: 2 - Flask API Core
 **Status**: In Progress
 
 ---
@@ -22,9 +22,9 @@ main (local development)
 ```
 
 ### Active Task
-- [x] Phase 1 frontend UI complete (Data Terminal aesthetic)
-- [ ] Set up backend venv and test hot reload
-- [ ] Begin Phase 2: Flask API Core
+- [x] Phase 1 complete (frontend UI + backend venv + hot reload verified)
+- [x] Phase 2 started: URL validation endpoint working
+- [ ] Continue Phase 2: config validation, job management, SSE
 
 ---
 
@@ -45,7 +45,7 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 
 ## Phase Checklist
 
-### Phase 1: Project Setup [IN PROGRESS]
+### Phase 1: Project Setup [COMPLETE]
 - [x] Create repo structure (frontend/, backend/, docs/)
 - [x] Initialize git + GitHub repo
 - [x] Write migration docs (PRD, phases, modularization)
@@ -56,14 +56,14 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [x] Create DEPLOYMENT.md guide
 - [x] Scaffold Next.js frontend
 - [x] Build frontend UI (sidebar config, URL input, results)
-- [ ] Verify both dev servers run with hot reload
-- [ ] Test Docker Compose dev environment
-- [ ] Commit Phase 1 complete
+- [x] Set up backend venv and verify hot reload
+- [ ] Test Docker Compose dev environment (optional, deferred)
+- [ ] Commit Phase 1 complete (pending)
 
-### Phase 2: Flask API Core [NOT STARTED]
-- [ ] Port URL regex patterns to `utils/constants.py`
-- [ ] Create `services/platform_detector.py`
-- [ ] Create `/api/urls/validate` endpoint
+### Phase 2: Flask API Core [IN PROGRESS]
+- [x] Port URL regex patterns to `utils/constants.py`
+- [x] Create `services/platform_detector.py`
+- [x] Create `/api/urls/validate` endpoint
 - [ ] Create `/api/config/validate` endpoint
 - [ ] Create job management system
 - [ ] Implement SSE for progress streaming
@@ -149,8 +149,12 @@ multiFetch-v2/
     ├── Dockerfile           # Production
     ├── Dockerfile.dev       # Development
     ├── app.py               # Flask factory
-    ├── api/                 # Route blueprints
-    └── services/            # Business logic
+    ├── api/
+    │   └── urls.py          # URL validation endpoints ✓
+    ├── services/
+    │   └── platform_detector.py  # Platform detection ✓
+    └── utils/
+        └── constants.py     # Regex patterns ✓
 ```
 
 ---
