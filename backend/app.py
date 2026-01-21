@@ -25,15 +25,17 @@ def create_app():
 
     # Register blueprints
     from api.urls import urls_bp
+    from api.config import config_bp
+    from api.jobs import jobs_bp
+    from api.sse import sse_bp
 
     app.register_blueprint(urls_bp, url_prefix="/api/urls")
+    app.register_blueprint(config_bp, url_prefix="/api/config")
+    app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
+    app.register_blueprint(sse_bp, url_prefix="/api/sse")
 
     # TODO: Register additional blueprints
-    # from api.config import config_bp
-    # from api.jobs import jobs_bp
     # from api.tiktok import tiktok_bp
-    # app.register_blueprint(config_bp, url_prefix="/api/config")
-    # app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
     # app.register_blueprint(tiktok_bp, url_prefix="/api/tiktok")
 
     return app

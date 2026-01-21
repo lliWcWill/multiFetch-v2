@@ -23,8 +23,8 @@ main (local development)
 
 ### Active Task
 - [x] Phase 1 complete (frontend UI + backend venv + hot reload verified)
-- [x] Phase 2 started: URL validation endpoint working
-- [ ] Continue Phase 2: config validation, job management, SSE
+- [x] Phase 2 nearly complete: all core API endpoints working
+- [ ] Phase 3: Connect frontend to Flask API
 
 ---
 
@@ -60,14 +60,14 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [ ] Test Docker Compose dev environment (optional, deferred)
 - [ ] Commit Phase 1 complete (pending)
 
-### Phase 2: Flask API Core [IN PROGRESS]
+### Phase 2: Flask API Core [NEARLY COMPLETE]
 - [x] Port URL regex patterns to `utils/constants.py`
 - [x] Create `services/platform_detector.py`
 - [x] Create `/api/urls/validate` endpoint
-- [ ] Create `/api/config/validate` endpoint
-- [ ] Create job management system
-- [ ] Implement SSE for progress streaming
-- [ ] Write tests
+- [x] Create `/api/config/validate` endpoint
+- [x] Create job management system (`services/job_manager.py`, `api/jobs.py`)
+- [x] Implement SSE for progress streaming (`api/sse.py`)
+- [ ] Write tests (deferred to Phase 4)
 
 ### Phase 3: Next.js Frontend Shell [NOT STARTED]
 - [ ] Create layout with sidebar
@@ -150,9 +150,13 @@ multiFetch-v2/
     ├── Dockerfile.dev       # Development
     ├── app.py               # Flask factory
     ├── api/
-    │   └── urls.py          # URL validation endpoints ✓
+    │   ├── urls.py          # URL validation ✓
+    │   ├── config.py        # Config validation ✓
+    │   ├── jobs.py          # Job CRUD endpoints ✓
+    │   └── sse.py           # SSE progress streaming ✓
     ├── services/
-    │   └── platform_detector.py  # Platform detection ✓
+    │   ├── platform_detector.py  # Platform detection ✓
+    │   └── job_manager.py   # Job state management ✓
     └── utils/
         └── constants.py     # Regex patterns ✓
 ```
