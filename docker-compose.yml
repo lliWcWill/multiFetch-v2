@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: ghcr.io/lliwcwill/multifetch-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${BACKEND_URL:-http://backend:5000}/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/lliwcwill/multifetch-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    restart: unless-stopped

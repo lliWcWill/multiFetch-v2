@@ -1,0 +1,19 @@
+# Development Dockerfile with hot reload
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies (FFmpeg for pydub)
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 5000
+
+# Flask debug mode with hot reload
+CMD ["flask", "run", "--host=0.0.0.0", "--debug"]

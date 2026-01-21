@@ -18,11 +18,27 @@
 
 ### Current Working Branch
 ```
-main
+main (local development)
 ```
 
 ### Active Task
-- [ ] Scaffold Next.js frontend with hot reload
+- [x] Scaffold Next.js frontend (DONE)
+- [ ] Set up backend venv and test hot reload
+
+---
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Local development (current) |
+| `prod` | Production deployment (create later) |
+| `feature/*` | Feature branches |
+
+### CI/CD Flow
+```
+feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
+```
 
 ---
 
@@ -33,18 +49,23 @@ main
 - [x] Initialize git + GitHub repo
 - [x] Write migration docs (PRD, phases, modularization)
 - [x] Create Flask app skeleton with hot reload (`make dev`)
-- [ ] Scaffold Next.js frontend
+- [x] Set up Docker Compose (dev + prod)
+- [x] Create Dockerfiles (frontend + backend)
+- [x] Set up GitHub Actions CI/CD workflow
+- [x] Create DEPLOYMENT.md guide
+- [x] Scaffold Next.js frontend
 - [ ] Verify both dev servers run with hot reload
-- [ ] Create initial commit for Phase 1 complete
+- [ ] Test Docker Compose dev environment
+- [ ] Commit Phase 1 complete
 
 ### Phase 2: Flask API Core [NOT STARTED]
 - [ ] Port URL regex patterns to `utils/constants.py`
-- [ ] Create `services/platform_detector.py` (detect_platform, validate_url)
+- [ ] Create `services/platform_detector.py`
 - [ ] Create `/api/urls/validate` endpoint
 - [ ] Create `/api/config/validate` endpoint
 - [ ] Create job management system
 - [ ] Implement SSE for progress streaming
-- [ ] Write tests for validators
+- [ ] Write tests
 
 ### Phase 3: Next.js Frontend Shell [NOT STARTED]
 - [ ] Create layout with sidebar
@@ -55,28 +76,45 @@ main
 - [ ] Connect to Flask API
 
 ### Phase 4: Download & Transcribe [NOT STARTED]
-- [ ] Port download_audio_enhanced() to services/downloader.py
-- [ ] Port chunk_audio() to services/audio.py
-- [ ] Port transcription logic to services/transcriber.py
+- [ ] Port download_audio_enhanced()
+- [ ] Port chunk_audio()
+- [ ] Port transcription logic
 - [ ] Port caching system
 - [ ] Create /api/jobs/* endpoints
 - [ ] Build processing UI components
-- [ ] End-to-end test: URL → transcription
+- [ ] End-to-end test
 
 ### Phase 5: TikTok Collections [NOT STARTED]
 - [ ] Port TIKTOK_COLLECTION_PATTERNS
 - [ ] Port expand_tiktok_collection()
 - [ ] Create /api/tiktok/expand endpoint
-- [ ] Build CollectionExpander component
-- [ ] Build VideoSelector component
+- [ ] Build collection UI components
 
 ### Phase 6: Polish & Deploy [NOT STARTED]
 - [ ] Implement export (ZIP, JSON)
 - [ ] Error handling + edge cases
-- [ ] Docker configuration
-- [ ] Vercel deployment (frontend)
-- [ ] Railway/Fly.io deployment (backend)
-- [ ] Final testing
+- [ ] Test Docker prod build
+- [ ] Set up server deployment
+- [ ] Configure GitHub secrets
+- [ ] Deploy to production
+
+---
+
+## Docker Setup
+
+### Local Development
+```bash
+docker-compose -f docker-compose.dev.yml up
+```
+
+### Production
+```bash
+docker-compose up -d
+```
+
+### Images
+- `ghcr.io/lliwcwill/multifetch-frontend`
+- `ghcr.io/lliwcwill/multifetch-backend`
 
 ---
 
@@ -93,17 +131,24 @@ main
 | `/home/player3/Projects/multiFetch/app.py:1187-1573` | Transcription + rate limiting |
 | `/home/player3/Projects/multiFetch/app.py:3004-3321` | Export functions |
 
-### Target (new structure)
+### Target Structure
 ```
 multiFetch-v2/
-├── frontend/           # Next.js 16 + TypeScript + Tailwind
-├── backend/
-│   ├── app.py          # Flask factory
-│   ├── api/            # Route blueprints
-│   ├── services/       # Business logic
-│   ├── models/         # Data models
-│   └── utils/          # Constants, helpers
-└── docs/               # PRD, phases, modularization
+├── PROGRESS.md              # This file
+├── CLAUDE.md                # Agent instructions
+├── docker-compose.yml       # Production
+├── docker-compose.dev.yml   # Development
+├── .github/workflows/       # CI/CD
+├── frontend/
+│   ├── Dockerfile           # Production
+│   ├── Dockerfile.dev       # Development
+│   └── src/                 # Next.js app
+└── backend/
+    ├── Dockerfile           # Production
+    ├── Dockerfile.dev       # Development
+    ├── app.py               # Flask factory
+    ├── api/                 # Route blueprints
+    └── services/            # Business logic
 ```
 
 ---
@@ -112,30 +157,19 @@ multiFetch-v2/
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-01-21 | SSE over WebSockets | Simpler, serverless-compatible, unidirectional is enough |
-| 2026-01-21 | Flask with `make dev` | Hot reload via `flask run --debug` |
-| 2026-01-21 | Vercel + Railway | Split deployment, best DX for each stack |
+| 2026-01-21 | SSE over WebSockets | Simpler, serverless-compatible |
+| 2026-01-21 | Flask with `make dev` | Hot reload via debug mode |
+| 2026-01-21 | Docker Compose | Consistent dev/prod environments |
+| 2026-01-21 | GitHub Actions CI/CD | Auto deploy on merge to prod |
+| 2026-01-21 | ghcr.io for images | Free with GitHub, no Docker Hub limits |
 | 2026-01-21 | No co-author attribution | User preference |
-
----
-
-## Git Workflow
-
-1. **Feature branches**: `phase-X/feature-name`
-2. **PR per phase**: Merge to main when phase complete
-3. **Commits**: Descriptive, no co-author line
-
-### Branch Status
-| Branch | Status | PR |
-|--------|--------|-----|
-| main | Active | - |
 
 ---
 
 ## Notes for Future Sessions
 
-- User password for sudo: `2345`
+- User on WSL2 with Docker Desktop
+- Password for sudo: `2345`
 - GitHub CLI authenticated as `lliWcWill`
-- User prefers hot reload dev experience (`npm run dev` style)
-- User dislikes excessive CSS/dark mode attempts
+- User prefers hot reload dev experience
 - Keep it simple, no over-engineering
