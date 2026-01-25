@@ -1,8 +1,8 @@
 # MultiFetch v2 - Progress Tracker
 
-**Last Updated**: 2026-01-21
-**Current Phase**: 2 - Flask API Core
-**Status**: In Progress
+**Last Updated**: 2026-01-25
+**Current Phase**: 3 - Frontend-Backend Integration
+**Status**: Complete
 
 ---
 
@@ -23,8 +23,9 @@ main (local development)
 
 ### Active Task
 - [x] Phase 1 complete (frontend UI + backend venv + hot reload verified)
-- [x] Phase 2 nearly complete: all core API endpoints working
-- [ ] Phase 3: Connect frontend to Flask API
+- [x] Phase 2 complete: all core API endpoints working
+- [x] Phase 3 complete: frontend connected to Flask API
+- [ ] Phase 4: Download & Transcribe (next)
 
 ---
 
@@ -60,7 +61,7 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [ ] Test Docker Compose dev environment (optional, deferred)
 - [ ] Commit Phase 1 complete (pending)
 
-### Phase 2: Flask API Core [NEARLY COMPLETE]
+### Phase 2: Flask API Core [COMPLETE]
 - [x] Port URL regex patterns to `utils/constants.py`
 - [x] Create `services/platform_detector.py`
 - [x] Create `/api/urls/validate` endpoint
@@ -69,13 +70,14 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [x] Implement SSE for progress streaming (`api/sse.py`)
 - [ ] Write tests (deferred to Phase 4)
 
-### Phase 3: Next.js Frontend Shell [NOT STARTED]
-- [ ] Create layout with sidebar
-- [ ] Build ConfigPanel (API key, cookies, language)
-- [ ] Build UrlInput component
-- [ ] Create Zustand stores (config, jobs)
-- [ ] Implement SSE hook for progress
-- [ ] Connect to Flask API
+### Phase 3: Frontend-Backend Integration [COMPLETE]
+- [x] Create layout with sidebar (done in Phase 1)
+- [x] Build ConfigPanel (API key, cookies, language) (done in Phase 1)
+- [x] Build UrlInput component (done in Phase 1)
+- [x] Create Zustand stores (`stores/configStore.ts`, `stores/jobStore.ts`)
+- [x] Create API client (`lib/api.ts`)
+- [x] Implement SSE hook for progress (`hooks/useSSE.ts`)
+- [x] Connect to Flask API (page.tsx updated)
 
 ### Phase 4: Download & Transcribe [NOT STARTED]
 - [ ] Port download_audio_enhanced()
@@ -144,7 +146,16 @@ multiFetch-v2/
 ├── frontend/
 │   ├── Dockerfile           # Production
 │   ├── Dockerfile.dev       # Development
-│   └── src/                 # Next.js app
+│   └── src/
+│       ├── app/
+│       │   └── page.tsx     # Main page (connected to API) ✓
+│       ├── stores/
+│       │   ├── configStore.ts   # Config state ✓
+│       │   └── jobStore.ts      # Job state ✓
+│       ├── lib/
+│       │   └── api.ts       # API client ✓
+│       └── hooks/
+│           └── useSSE.ts    # SSE hook ✓
 └── backend/
     ├── Dockerfile           # Production
     ├── Dockerfile.dev       # Development
@@ -173,6 +184,8 @@ multiFetch-v2/
 | 2026-01-21 | GitHub Actions CI/CD | Auto deploy on merge to prod |
 | 2026-01-21 | ghcr.io for images | Free with GitHub, no Docker Hub limits |
 | 2026-01-21 | No co-author attribution | User preference |
+| 2026-01-25 | Zustand for state | Simple, minimal boilerplate |
+| 2026-01-25 | Persist config in localStorage | Better UX, remember settings |
 
 ---
 

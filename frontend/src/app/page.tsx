@@ -1,6 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useConfigStore, SUPPORTED_LANGUAGES } from '@/stores/configStore';
+import { useJobStore, type JobItem, type Platform } from '@/stores/jobStore';
+import { validateUrls, createJob, startJob, validateApiKey, ApiError } from '@/lib/api';
+import { useJobSSE } from '@/hooks/useSSE';
 
 // Icons as inline SVGs for simplicity
 const Icons = {
@@ -70,42 +74,69 @@ const Icons = {
       <line x1="12" y1="19" x2="20" y2="19"/>
     </svg>
   ),
+  AlertCircle: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  ),
 };
 
-// Platform detection
-function detectPlatform(url: string): 'youtube' | 'instagram' | 'tiktok' | null {
-  if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
-  if (url.includes('instagram.com')) return 'instagram';
-  if (url.includes('tiktok.com')) return 'tiktok';
-  return null;
+// Platform icon component
+function PlatformIcon({ platform }: { platform: Platform | null }) {
+  if (platform === 'youtube') return <Icons.YouTube />;
+  if (platform === 'instagram') return <Icons.Instagram />;
+  if (platform === 'tiktok') return <Icons.TikTok />;
+  return <Icons.AlertCircle />;
 }
 
 // Sidebar Config Panel
-function ConfigPanel({
-  apiKey,
-  setApiKey,
-  language,
-  setLanguage,
-  isDevTier,
-  setIsDevTier,
-}: {
-  apiKey: string;
-  setApiKey: (key: string) => void;
-  language: string;
-  setLanguage: (lang: string) => void;
-  isDevTier: boolean;
-  setIsDevTier: (tier: boolean) => void;
-}) {
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'fr', name: 'French' },
-    { code: 'de', name: 'German' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'pt', name: 'Portuguese' },
-  ];
+function ConfigPanel() {
+  const {
+    apiKey,
+    language,
+    isDevTier,
+    isApiKeyValid,
+    isValidating,
+    validationError,
+    setApiKey,
+    setLanguage,
+    setIsDevTier,
+    setApiKeyValidation,
+    setValidating,
+  } = useConfigStore();
+
+  // Debounced API key validation
+  useEffect(() => {
+    if (!apiKey) {
+      setApiKeyValidation(null);
+      return;
+    }
+
+    // Basic format check immediately
+    if (!apiKey.startsWith('gsk_') || apiKey.length < 20) {
+      setApiKeyValidation(false, 'Invalid API key format');
+      return;
+    }
+
+    // Debounce API validation call
+    setValidating(true);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await validateApiKey(apiKey);
+        setApiKeyValidation(result.valid, result.error);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setApiKeyValidation(false, error.message);
+        } else {
+          setApiKeyValidation(false, 'Failed to validate API key');
+        }
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [apiKey, setApiKeyValidation, setValidating]);
 
   return (
     <aside className="w-72 bg-[var(--bg-secondary)] border-r border-[var(--border-subtle)] flex flex-col">
@@ -135,14 +166,26 @@ function ConfigPanel({
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="gsk_..."
-            className="input-terminal w-full px-3 py-2.5 rounded-md text-sm"
+            className={`input-terminal w-full px-3 py-2.5 rounded-md text-sm ${
+              validationError ? 'border-[var(--accent-red)]' : ''
+            }`}
           />
-          <p className="text-xs text-[var(--text-muted)]">
-            Get key at{' '}
-            <a href="https://console.groq.com" target="_blank" className="text-[var(--accent-cyan)] hover:underline">
-              console.groq.com
-            </a>
-          </p>
+          {isValidating && (
+            <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
+              <Icons.Loader /> Validating...
+            </p>
+          )}
+          {validationError && (
+            <p className="text-xs text-[var(--accent-red)]">{validationError}</p>
+          )}
+          {!apiKey && (
+            <p className="text-xs text-[var(--text-muted)]">
+              Get key at{' '}
+              <a href="https://console.groq.com" target="_blank" className="text-[var(--accent-cyan)] hover:underline">
+                console.groq.com
+              </a>
+            </p>
+          )}
         </div>
 
         {/* Language */}
@@ -156,7 +199,7 @@ function ConfigPanel({
             onChange={(e) => setLanguage(e.target.value)}
             className="input-terminal w-full px-3 py-2.5 rounded-md text-sm cursor-pointer"
           >
-            {languages.map((lang) => (
+            {SUPPORTED_LANGUAGES.map((lang) => (
               <option key={lang.code} value={lang.code}>
                 {lang.name}
               </option>
@@ -225,9 +268,9 @@ function ConfigPanel({
       {/* Status */}
       <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
         <div className="flex items-center gap-2">
-          <span className={`status-dot ${apiKey ? 'status-success' : 'status-pending'}`} />
+          <span className={`status-dot ${isApiKeyValid ? 'status-success' : apiKey ? 'status-pending' : 'status-pending'}`} />
           <span className="text-xs text-[var(--text-muted)] font-mono">
-            {apiKey ? 'API Connected' : 'API Key Required'}
+            {isApiKeyValid ? 'API Connected' : apiKey ? 'Validating...' : 'API Key Required'}
           </span>
         </div>
       </div>
@@ -236,19 +279,98 @@ function ConfigPanel({
 }
 
 // URL Input Component
-function UrlInput({
-  urls,
-  setUrls,
-  onProcess,
-  isProcessing,
-}: {
-  urls: string;
-  setUrls: (urls: string) => void;
-  onProcess: () => void;
-  isProcessing: boolean;
-}) {
-  const urlLines = urls.split('\n').filter((line) => line.trim());
-  const validUrls = urlLines.filter((url) => detectPlatform(url));
+function UrlInput() {
+  const {
+    urlInput,
+    validatedUrls,
+    isValidating,
+    isProcessing,
+    setUrlInput,
+    setValidatedUrls,
+    setIsValidating,
+  } = useJobStore();
+
+  const { isApiKeyValid, language } = useConfigStore();
+  const { setCurrentJob, setProcessing, updateJobItem } = useJobStore();
+
+  // Parse URLs from input
+  const urlLines = useMemo(() =>
+    urlInput.split('\n').filter((line) => line.trim()),
+    [urlInput]
+  );
+
+  // Debounced URL validation
+  useEffect(() => {
+    if (urlLines.length === 0) {
+      setValidatedUrls([]);
+      return;
+    }
+
+    setIsValidating(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await validateUrls(urlLines);
+        setValidatedUrls(results);
+      } catch (error) {
+        console.error('URL validation failed:', error);
+        setIsValidating(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [urlLines, setValidatedUrls, setIsValidating]);
+
+  const validUrls = useMemo(() =>
+    validatedUrls.filter((u) => u.valid),
+    [validatedUrls]
+  );
+
+  // SSE connection for real-time updates
+  const { currentJob } = useJobStore();
+
+  useJobSSE(currentJob?.id ?? null, {
+    onUpdate: (job) => {
+      setCurrentJob(job);
+    },
+    onItemUpdate: (data) => {
+      updateJobItem(data.url, {
+        progress: data.progress,
+        status: data.status as JobItem['status'],
+        title: data.title ?? undefined,
+        transcript: data.transcript ?? undefined,
+        error: data.error ?? undefined,
+      });
+    },
+    onComplete: (job) => {
+      setCurrentJob(job);
+      setProcessing(false);
+    },
+    onError: (error) => {
+      setProcessing(false, error);
+    },
+  });
+
+  const handleProcess = useCallback(async () => {
+    if (!isApiKeyValid || validUrls.length === 0) return;
+
+    setProcessing(true);
+
+    try {
+      // Create the job
+      const job = await createJob(
+        validUrls.map((u) => u.url),
+        'full',
+        language
+      );
+      setCurrentJob(job);
+
+      // Start processing
+      await startJob(job.id);
+    } catch (error) {
+      console.error('Failed to create job:', error);
+      setProcessing(false, error instanceof Error ? error.message : 'Failed to create job');
+    }
+  }, [isApiKeyValid, validUrls, language, setCurrentJob, setProcessing]);
 
   return (
     <div className="card p-5 space-y-4">
@@ -259,56 +381,67 @@ function UrlInput({
         </h2>
         {urlLines.length > 0 && (
           <span className="text-xs font-mono text-[var(--text-muted)]">
-            {validUrls.length}/{urlLines.length} valid
+            {isValidating ? (
+              <span className="flex items-center gap-1">
+                <Icons.Loader /> Validating...
+              </span>
+            ) : (
+              `${validUrls.length}/${urlLines.length} valid`
+            )}
           </span>
         )}
       </div>
 
       <textarea
-        value={urls}
-        onChange={(e) => setUrls(e.target.value)}
+        value={urlInput}
+        onChange={(e) => setUrlInput(e.target.value)}
         placeholder="Paste URLs here (one per line)&#10;&#10;https://www.youtube.com/watch?v=...&#10;https://www.instagram.com/reel/...&#10;https://www.tiktok.com/@user/video/..."
         className="input-terminal w-full h-48 px-4 py-3 rounded-lg text-sm resize-none"
         spellCheck={false}
+        disabled={isProcessing}
       />
 
       {/* URL Preview */}
-      {urlLines.length > 0 && (
+      {validatedUrls.length > 0 && (
         <div className="space-y-2">
-          {urlLines.slice(0, 5).map((url, i) => {
-            const platform = detectPlatform(url);
-            return (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-xs font-mono bg-[var(--bg-tertiary)] px-3 py-2 rounded"
-              >
-                {platform === 'youtube' && (
-                  <span className="text-[var(--youtube)]"><Icons.YouTube /></span>
-                )}
-                {platform === 'instagram' && (
-                  <span className="text-[var(--instagram)]"><Icons.Instagram /></span>
-                )}
-                {platform === 'tiktok' && (
-                  <span className="text-[var(--tiktok)]"><Icons.TikTok /></span>
-                )}
-                {!platform && (
-                  <span className="text-[var(--accent-red)]">✗</span>
-                )}
-                <span className="truncate text-[var(--text-secondary)]">{url}</span>
-              </div>
-            );
-          })}
-          {urlLines.length > 5 && (
+          {validatedUrls.slice(0, 5).map((result, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 text-xs font-mono bg-[var(--bg-tertiary)] px-3 py-2 rounded"
+            >
+              {result.valid ? (
+                <span className={`${
+                  result.platform === 'youtube' ? 'text-[var(--youtube)]' :
+                  result.platform === 'instagram' ? 'text-[var(--instagram)]' :
+                  'text-[var(--tiktok)]'
+                }`}>
+                  <PlatformIcon platform={result.platform} />
+                </span>
+              ) : (
+                <span className="text-[var(--accent-red)]">
+                  <Icons.AlertCircle />
+                </span>
+              )}
+              <span className="truncate text-[var(--text-secondary)]">{result.url}</span>
+              {!result.valid && result.error && (
+                <span className="text-[var(--accent-red)] ml-auto text-[10px]">{result.error}</span>
+              )}
+              {result.is_collection && (
+                <span className="text-[var(--accent-cyan)] ml-auto text-[10px]">Collection</span>
+              )}
+            </div>
+          ))}
+          {validatedUrls.length > 5 && (
             <p className="text-xs text-[var(--text-muted)] font-mono">
-              +{urlLines.length - 5} more URLs
+              +{validatedUrls.length - 5} more URLs
             </p>
           )}
         </div>
       )}
 
       <button
-        onClick={onProcess}
-        disabled={isProcessing || validUrls.length === 0}
+        onClick={handleProcess}
+        disabled={isProcessing || validUrls.length === 0 || !isApiKeyValid}
         className="btn-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isProcessing ? (
@@ -323,24 +456,24 @@ function UrlInput({
           </>
         )}
       </button>
+
+      {!isApiKeyValid && validUrls.length > 0 && (
+        <p className="text-xs text-[var(--accent-red)] text-center">
+          Please enter a valid API key to process URLs
+        </p>
+      )}
     </div>
   );
 }
 
 // Result Card Component
-function ResultCard({
-  result,
-}: {
-  result: {
-    url: string;
-    title: string;
-    status: 'success' | 'processing' | 'error';
-    transcription?: string;
-    duration?: number;
-    platform: 'youtube' | 'instagram' | 'tiktok';
-  };
-}) {
+function ResultCard({ item }: { item: JobItem }) {
   const [expanded, setExpanded] = useState(false);
+
+  const statusClass = item.status === 'completed' ? 'status-success' :
+                      item.status === 'failed' ? 'status-error' :
+                      item.status === 'running' ? 'status-processing' :
+                      'status-pending';
 
   return (
     <div className="card-elevated p-4 space-y-3 animate-fade-in">
@@ -348,43 +481,50 @@ function ResultCard({
         <div className="flex items-center gap-3 min-w-0">
           <span
             className={`w-8 h-8 rounded flex items-center justify-center flex-shrink-0 ${
-              result.platform === 'youtube'
+              item.platform === 'youtube'
                 ? 'bg-[var(--youtube)]'
-                : result.platform === 'instagram'
+                : item.platform === 'instagram'
                 ? 'bg-[var(--instagram)]'
                 : 'bg-[var(--tiktok)]'
             } text-white`}
           >
-            {result.platform === 'youtube' && <Icons.YouTube />}
-            {result.platform === 'instagram' && <Icons.Instagram />}
-            {result.platform === 'tiktok' && <Icons.TikTok />}
+            <PlatformIcon platform={item.platform} />
           </span>
           <div className="min-w-0">
-            <h3 className="font-medium text-sm truncate">{result.title}</h3>
-            {result.duration && (
-              <p className="text-xs text-[var(--text-muted)] font-mono">
-                {Math.floor(result.duration / 60)}:{String(result.duration % 60).padStart(2, '0')}
-              </p>
-            )}
+            <h3 className="font-medium text-sm truncate">
+              {item.title || `Video ${item.video_id || '...'}`}
+            </h3>
+            <p className="text-xs text-[var(--text-muted)] font-mono truncate">
+              {item.url}
+            </p>
           </div>
         </div>
-        <span className={`status-dot flex-shrink-0 status-${result.status}`} />
+        <span className={`status-dot flex-shrink-0 ${statusClass}`} />
       </div>
 
-      {result.status === 'processing' && (
-        <div className="progress-bar h-1.5 rounded-full">
-          <div className="progress-fill h-full rounded-full w-2/3" />
+      {item.status === 'running' && (
+        <div className="progress-bar h-1.5 rounded-full overflow-hidden">
+          <div
+            className="progress-fill h-full rounded-full transition-all duration-300"
+            style={{ width: `${item.progress}%` }}
+          />
         </div>
       )}
 
-      {result.status === 'success' && result.transcription && (
+      {item.status === 'failed' && item.error && (
+        <div className="text-sm text-[var(--accent-red)] bg-[var(--bg-primary)] p-3 rounded font-mono">
+          Error: {item.error}
+        </div>
+      )}
+
+      {item.status === 'completed' && item.transcript && (
         <>
           <div
             className={`text-sm text-[var(--text-secondary)] bg-[var(--bg-primary)] p-3 rounded font-mono leading-relaxed ${
               expanded ? '' : 'line-clamp-3'
             }`}
           >
-            {result.transcription}
+            {item.transcript}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -410,65 +550,15 @@ function ResultCard({
 
 // Main Page
 export default function Home() {
-  const [apiKey, setApiKey] = useState('');
-  const [language, setLanguage] = useState('en');
-  const [isDevTier, setIsDevTier] = useState(false);
-  const [urls, setUrls] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [results, setResults] = useState<Array<{
-    url: string;
-    title: string;
-    status: 'success' | 'processing' | 'error';
-    transcription?: string;
-    duration?: number;
-    platform: 'youtube' | 'instagram' | 'tiktok';
-  }>>([]);
+  const { currentJob, isProcessing, processingError } = useJobStore();
 
-  const handleProcess = () => {
-    setIsProcessing(true);
-
-    // Demo: Add mock results
-    const urlLines = urls.split('\n').filter((line) => line.trim());
-    const mockResults = urlLines
-      .map((url) => {
-        const platform = detectPlatform(url);
-        if (!platform) return null;
-        return {
-          url,
-          title: `Video from ${url.split('/').pop()?.slice(0, 20)}...`,
-          status: 'processing' as const,
-          platform,
-          duration: Math.floor(Math.random() * 300) + 60,
-        };
-      })
-      .filter(Boolean) as typeof results;
-
-    setResults(mockResults);
-
-    // Simulate processing completion
-    setTimeout(() => {
-      setResults((prev) =>
-        prev.map((r) => ({
-          ...r,
-          status: 'success' as const,
-          transcription:
-            'This is a demo transcription. In production, this would contain the actual transcribed text from the audio. The transcription would be generated using the Groq Whisper API with support for multiple languages and automatic chunking for longer audio files.',
-        }))
-      );
-      setIsProcessing(false);
-    }, 2000);
-  };
+  const results = currentJob?.items ?? [];
+  const completedCount = currentJob?.completed_count ?? 0;
+  const hasCompletedItems = completedCount > 0;
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <ConfigPanel
-        apiKey={apiKey}
-        setApiKey={setApiKey}
-        language={language}
-        setLanguage={setLanguage}
-        isDevTier={isDevTier}
-        setIsDevTier={setIsDevTier}
-      />
+      <ConfigPanel />
 
       <main className="flex-1 overflow-y-auto grid-bg">
         <div className="max-w-4xl mx-auto p-8 space-y-8">
@@ -483,12 +573,18 @@ export default function Home() {
           </header>
 
           {/* URL Input */}
-          <UrlInput
-            urls={urls}
-            setUrls={setUrls}
-            onProcess={handleProcess}
-            isProcessing={isProcessing}
-          />
+          <UrlInput />
+
+          {/* Processing Error */}
+          {processingError && (
+            <div className="card p-4 border-[var(--accent-red)] bg-[var(--bg-secondary)]">
+              <div className="flex items-center gap-2 text-[var(--accent-red)]">
+                <Icons.AlertCircle />
+                <span className="font-medium">Processing Error</span>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] mt-2">{processingError}</p>
+            </div>
+          )}
 
           {/* Results */}
           {results.length > 0 && (
@@ -498,10 +594,10 @@ export default function Home() {
                   <span className="text-[var(--accent-green)]">&gt;</span>
                   Results
                   <span className="text-xs text-[var(--text-muted)] font-normal">
-                    ({results.filter((r) => r.status === 'success').length}/{results.length})
+                    ({completedCount}/{results.length})
                   </span>
                 </h2>
-                {results.some((r) => r.status === 'success') && (
+                {hasCompletedItems && (
                   <div className="flex gap-2">
                     <button className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
                       <Icons.Download />
@@ -515,9 +611,27 @@ export default function Home() {
                 )}
               </div>
 
+              {/* Overall Progress */}
+              {isProcessing && currentJob && (
+                <div className="card p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-[var(--text-secondary)]">Overall Progress</span>
+                    <span className="text-sm font-mono text-[var(--text-muted)]">
+                      {currentJob.progress}%
+                    </span>
+                  </div>
+                  <div className="progress-bar h-2 rounded-full overflow-hidden">
+                    <div
+                      className="progress-fill h-full rounded-full transition-all duration-300"
+                      style={{ width: `${currentJob.progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
-                {results.map((result, i) => (
-                  <ResultCard key={i} result={result} />
+                {results.map((item, i) => (
+                  <ResultCard key={item.url || i} item={item} />
                 ))}
               </div>
             </div>
