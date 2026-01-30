@@ -1,0 +1,199 @@
+# CodeRabbit configuration for multiFetch-v2
+# Overrides global defaults from lliWcWill/.coderabbit/config.yaml
+# Stack: Next.js (TypeScript) frontend + Flask (Python) backend + Docker
+# See: https://docs.coderabbit.ai/reference/configuration
+
+language: "en-US"
+tone_instructions: "Be direct and technical. Focus on security (SSRF, injection, auth), correctness, and real bugs. Skip praise — just flag issues."
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  poem: false
+  in_progress_fortune: false
+  review_details: true
+  enable_prompt_for_ai_agents: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: false
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT REVIEW"
+
+  path_filters:
+    - "!dist/**"
+    - "!build/**"
+    - "!.next/**"
+    - "!node_modules/**"
+    - "!package-lock.json"
+    - "!__pycache__/**"
+    - "!*.pyc"
+    - "!.venv/**"
+    - "!venv/**"
+    - "!PROGRESS.md"
+    - "!SESSION_HANDOFF.md"
+    - "!PRD_convert.md"
+
+  path_instructions:
+    # ── Backend: Flask API ──
+    - path: "backend/api/**"
+      instructions: |
+        Flask API routes. Focus on:
+        - Input validation and sanitization on all request parameters
+        - SSRF protection on user-provided URLs (block private IPs, localhost, link-local)
+        - Proper error handling (no stack traces or internal paths in responses)
+        - Auth/CORS configuration correctness
+    - path: "backend/services/**"
+      instructions: |
+        Backend services (job management, platform detection). Focus on:
+        - Safe subprocess invocation (no user input in shell commands)
+        - Proper cleanup of temp files and downloaded media on all code paths
+        - Race conditions in job state management
+        - Resource limits (file size, timeout enforcement)
+    - path: "backend/utils/**"
+      instructions: |
+        Utility modules. Focus on:
+        - URL validation and SSRF protection
+        - Safe file handling (no path traversal)
+        - No secrets or API keys in error messages
+    - path: "app.py"
+      instructions: |
+        Flask app entry point. Check for:
+        - Debug mode not enabled in production
+        - Proper CORS configuration
+        - No hardcoded secrets
+    # ── Frontend: Next.js ──
+    - path: "frontend/src/app/**"
+      instructions: |
+        Next.js app router pages and layouts. Focus on:
+        - Proper error boundaries and loading states
+        - No sensitive data in client-side code
+        - Accessible UI (ARIA attributes, semantic HTML)
+    - path: "frontend/src/hooks/**"
+      instructions: |
+        React hooks. Focus on:
+        - Proper cleanup in useEffect (abort controllers, event listeners)
+        - Race condition prevention in async hooks
+        - Error state handling
+    - path: "frontend/src/stores/**"
+      instructions: |
+        Zustand state stores. Focus on:
+        - Immutable state updates
+        - No stale closures
+        - Proper action error handling
+    - path: "frontend/src/lib/**"
+      instructions: |
+        Shared frontend utilities. Focus on:
+        - URL validation before fetch calls
+        - Proper error handling on API calls
+        - No hardcoded API URLs (use env vars)
+    # ── Docker ──
+    - path: "docker-compose*.yml"
+      instructions: |
+        Docker Compose configs. Check for:
+        - No hardcoded secrets (use env_file or Docker secrets)
+        - Proper health checks
+        - Volume mount security
+    - path: "**/Dockerfile*"
+      instructions: |
+        Dockerfiles. Check for:
+        - Multi-stage builds where appropriate
+        - Non-root user in production
+        - No secrets in build args or layers
+        - Pinned base image versions
+
+  tools:
+    # Python (backend)
+    ruff:
+      enabled: true
+    pylint:
+      enabled: true
+    # JavaScript / TypeScript (frontend)
+    biome:
+      enabled: true
+    eslint:
+      enabled: true
+    oxc:
+      enabled: true
+    # Docker
+    hadolint:
+      enabled: true
+    # Security
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+    # Shell / Markdown / YAML
+    shellcheck:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    htmlhint:
+      enabled: true
+    # GitHub Actions
+    actionlint:
+      enabled: true
+    # Not needed for this stack
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    golangci-lint:
+      enabled: false
+    rubocop:
+      enabled: false
+    swiftlint:
+      enabled: false
+    detekt:
+      enabled: false
+    flake8:
+      enabled: false
+    clippy:
+      enabled: false
+    sqlfluff:
+      enabled: false
+    fortitudeLint:
+      enabled: false
+    checkov:
+      enabled: false
+    pmd:
+      enabled: false
+    clang:
+      enabled: false
+    cppcheck:
+      enabled: false
+    buf:
+      enabled: false
+    regal:
+      enabled: false
+    brakeman:
+      enabled: false
+    luacheck:
+      enabled: false
+    shopifyThemeCheck:
+      enabled: false
+    prismaLint:
+      enabled: false
+    circleci:
+      enabled: false
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+  learnings:
+    scope: "local"
+  web_search:
+    enabled: true
