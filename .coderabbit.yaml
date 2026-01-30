@@ -114,13 +114,14 @@ reviews:
       enabled: true
     pylint:
       enabled: true
-    # JavaScript / TypeScript (frontend)
-    biome:
-      enabled: true
+    # JavaScript / TypeScript (frontend): eslint as primary linter.
+    # Biome and oxc overlap — disabled to avoid duplicate warnings.
     eslint:
       enabled: true
+    biome:
+      enabled: false
     oxc:
-      enabled: true
+      enabled: false
     # Docker
     hadolint:
       enabled: true
