@@ -17,4 +17,5 @@ COPY . .
 
 # Production server
 EXPOSE 5000
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]
+# Single worker for in-memory job state, long timeout for SSE
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "300", "app:app"]
