@@ -71,11 +71,14 @@ def download_audio(
     Returns:
         (audio_path, title, info_dict) or (None, None, error_dict)
     """
-    # Check cache first (only for metadata, not file paths)
+    # Check cache for metadata
     cache_key = get_cache_key(url, "download_meta")
     cached_meta = load_from_cache(cache_key)
 
     platform, video_id = detect_platform(url)
+
+    # Use cached metadata if available
+    cached_title = cached_meta.get("title") if cached_meta else None
 
     # Create output directory
     if output_dir:
@@ -93,9 +96,14 @@ def download_audio(
             except Exception as e:
                 logger.warning(f"Failed to cleanup temp dir: {e}")
 
-    # Get video info
-    video_info = get_video_info_yt(url, cookies_path) if platform == "youtube" else {}
-    video_title = video_info.get("title", f"video_{video_id or 'unknown'}")
+    # Get video info (use cached title if available)
+    if cached_title:
+        video_info = {}
+        video_title = cached_title
+        logger.debug(f"Using cached title: {video_title}")
+    else:
+        video_info = get_video_info_yt(url, cookies_path) if platform == "youtube" else {}
+        video_title = video_info.get("title", f"video_{video_id or 'unknown'}")
     safe_title = sanitize_filename(video_title)
 
     # Check for cookie file
@@ -110,7 +118,7 @@ def download_audio(
     # Base options for all platforms
     base_opts = {
         "format": "bestaudio/best",
-        "outtmpl": os.path.join(temp_dir, "%(title)s.%(ext)s"),
+        "outtmpl": os.path.join(temp_dir, f"{safe_title}.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,

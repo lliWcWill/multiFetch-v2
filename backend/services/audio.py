@@ -149,6 +149,10 @@ def chunk_audio(
                 logger.debug(f"Reached end of audio at {end_ms}ms")
                 break
 
+            # Warn if chunk is still too large (before incrementing index)
+            if chunk_size_mb > max_chunk_size_mb:
+                logger.warning(f"Chunk {chunk_index} is {chunk_size_mb:.1f}MB, exceeds target!")
+
             # Move to next chunk (with overlap except for final chunk)
             if end_ms + chunk_duration_ms >= total_length_ms:
                 start_ms = end_ms  # No overlap for final chunk
@@ -156,10 +160,6 @@ def chunk_audio(
                 start_ms = end_ms - OVERLAP_MS
 
             chunk_index += 1
-
-            # Warn if chunk is still too large
-            if chunk_size_mb > max_chunk_size_mb:
-                logger.warning(f"Chunk {chunk_index} is {chunk_size_mb:.1f}MB, exceeds target!")
 
         if chunk_index >= max_iterations:
             logger.warning(f"Reached maximum iterations ({max_iterations})")

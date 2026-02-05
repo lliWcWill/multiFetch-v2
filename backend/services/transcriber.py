@@ -160,7 +160,7 @@ def transcribe_with_retry(
 
             if "413" in error_str or "too large" in error_str.lower():
                 tier_msg = f"{'dev' if is_dev_tier else 'free'} tier ({max_allowed}MB)"
-                raise Exception(f"File too large for Groq API {tier_msg}: {file_size_mb:.1f}MB")
+                raise Exception(f"File too large for Groq API {tier_msg}: {file_size_mb:.1f}MB") from e
 
             elif "503" in error_str or "Service Unavailable" in error_str:
                 wait_time = min(base_delay * (2 ** attempt) + random.uniform(0, 5), max_delay)
@@ -187,7 +187,7 @@ def transcribe_with_retry(
                 time.sleep(base_delay)
                 continue
             else:
-                raise e
+                raise
 
     return None
 
@@ -266,7 +266,6 @@ def transcribe_audio(
 
         # Determine parallel vs sequential
         use_parallel = duration_minutes >= 30
-        num_chunks = len(chunks)
 
         if use_parallel:
             transcription = _transcribe_parallel(
@@ -377,7 +376,10 @@ def _transcribe_parallel(
                 if job and job.status == JobStatus.CANCELLED:
                     break
 
-            chunk = next(c for c in chunks if c["index"] == chunk_index)
+            chunk = next((c for c in chunks if c["index"] == chunk_index), None)
+            if chunk is None:
+                logger.error(f"Chunk {chunk_index} not found in chunks list")
+                continue
             try:
                 chunk_text = transcribe_with_retry(
                     client,
