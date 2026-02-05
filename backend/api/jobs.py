@@ -4,7 +4,7 @@ Job management API endpoints for MultiFetch v2.
 
 from flask import Blueprint, request, jsonify
 
-from services.job_manager import job_manager, JobType, JobStatus
+from services.job_manager import job_manager, JobType
 from services.platform_detector import validate_urls_batch
 
 jobs_bp = Blueprint("jobs", __name__)
@@ -135,46 +135,5 @@ def delete_job(job_id: str):
     return jsonify({"error": "Job not found"}), 404
 
 
-@jobs_bp.route("/<job_id>/cancel", methods=["POST"])
-def cancel_job(job_id: str):
-    """
-    Cancel a running or pending job.
-
-    Response:
-        Updated job object or error
-    """
-    if job_manager.cancel_job(job_id):
-        job = job_manager.get_job(job_id)
-        return jsonify(job.to_dict())
-
-    job = job_manager.get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-
-    return jsonify({"error": f"Cannot cancel job with status: {job.status.value}"}), 400
-
-
-@jobs_bp.route("/<job_id>/start", methods=["POST"])
-def start_job(job_id: str):
-    """
-    Start processing a pending job.
-    This endpoint will be expanded in Phase 4 to actually process the URLs.
-
-    Response:
-        Updated job object or error
-    """
-    job = job_manager.get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-
-    if job.status != JobStatus.PENDING:
-        return jsonify({"error": f"Job is not pending (status: {job.status.value})"}), 400
-
-    # Mark job as running (actual processing will be added in Phase 4)
-    job_manager.update_job_status(job_id, JobStatus.RUNNING)
-
-    # TODO: In Phase 4, spawn background task to process URLs
-    # For now, just mark it as running
-
-    job = job_manager.get_job(job_id)
-    return jsonify(job.to_dict())
+# Note: /cancel and /start endpoints are now in api/process.py
+# which handles the actual job execution with background threading

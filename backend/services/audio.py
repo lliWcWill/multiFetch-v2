@@ -57,6 +57,18 @@ def chunk_audio(
         # Calculate chunk duration based on file size
         file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
 
+        # Guard against empty/zero-size files
+        if file_size_mb <= 0:
+            logger.warning(f"File size is 0 or negative ({file_size_mb}MB), returning as single chunk")
+            return [{
+                "path": audio_path,
+                "start_ms": 0,
+                "end_ms": total_length_ms,
+                "index": 0,
+                "duration_ms": total_length_ms,
+                "size_mb": file_size_mb,
+            }]
+
         # Use 50% of max size for safety margin
         target_chunk_size_mb = max_chunk_size_mb * 0.5
 

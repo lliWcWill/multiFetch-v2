@@ -47,7 +47,7 @@ class RateLimiter:
             rpm: Requests per minute limit
         """
         self.rpm = rpm
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # RLock to allow recursive calls in wait_if_needed
         self.requests: list[float] = []
         self.min_interval = 60.0 / rpm
 
