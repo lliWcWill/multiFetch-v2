@@ -3,11 +3,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
+# Copy source (will be overridden by volume mount)
 COPY . .
 
+# Expose dev server port
 EXPOSE 3000
 
+# Run Next.js dev server with hot reload
 CMD ["npm", "run", "dev"]

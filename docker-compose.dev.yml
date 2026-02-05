@@ -1,4 +1,5 @@
-version: '3.8'
+# Development docker-compose with hot reload
+# Usage: docker compose -f docker-compose.dev.yml up
 
 services:
   frontend:
@@ -9,12 +10,13 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
     depends_on:
       - backend
+    restart: unless-stopped
 
   backend:
     build:
@@ -24,8 +26,11 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=development
-      - FLASK_APP=app.py
+      - FLASK_DEBUG=1
       - FRONTEND_URL=http://localhost:3000
-      - GROQ_API_KEY=${GROQ_API_KEY}
     volumes:
-      - ./backend:/app
+      - ./backend/api:/app/api
+      - ./backend/services:/app/services
+      - ./backend/utils:/app/utils
+      - ./backend/app.py:/app/app.py
+    restart: unless-stopped

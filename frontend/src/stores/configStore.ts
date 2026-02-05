@@ -17,12 +17,19 @@ interface ConfigState {
   isValidating: boolean;
   validationError: string | null;
 
+  // Sidebar state
+  sidebarCollapsed: boolean;
+  sidebarPinned: boolean;
+
   // Actions
   setApiKey: (key: string) => void;
   setLanguage: (lang: string) => void;
   setIsDevTier: (isDev: boolean) => void;
   setApiKeyValidation: (valid: boolean | null, error?: string | null) => void;
   setValidating: (validating: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  setSidebarPinned: (pinned: boolean) => void;
+  toggleSidebar: () => void;
   reset: () => void;
 }
 
@@ -33,6 +40,8 @@ const initialState = {
   isApiKeyValid: null,
   isValidating: false,
   validationError: null,
+  sidebarCollapsed: false,
+  sidebarPinned: false,
 };
 
 export const useConfigStore = create<ConfigState>()(
@@ -63,6 +72,19 @@ export const useConfigStore = create<ConfigState>()(
       setValidating: (validating: boolean) =>
         set({ isValidating: validating }),
 
+      setSidebarCollapsed: (collapsed: boolean) =>
+        set({ sidebarCollapsed: collapsed }),
+
+      setSidebarPinned: (pinned: boolean) =>
+        set((state) => ({
+          sidebarPinned: pinned,
+          // If unpinning and sidebar is open, it stays open until mouse leaves
+          sidebarCollapsed: pinned ? false : state.sidebarCollapsed,
+        })),
+
+      toggleSidebar: () =>
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
       reset: () =>
         set(initialState),
     }),
@@ -72,6 +94,7 @@ export const useConfigStore = create<ConfigState>()(
         apiKey: state.apiKey,
         language: state.language,
         isDevTier: state.isDevTier,
+        sidebarPinned: state.sidebarPinned,
       }),
     }
   )

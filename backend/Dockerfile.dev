@@ -3,17 +3,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies (FFmpeg for pydub)
+# Install system dependencies (ffmpeg for pydub)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy source (will be overridden by volume mount)
 COPY . .
 
+# Expose Flask port
 EXPOSE 5000
 
-# Flask debug mode with hot reload
-CMD ["flask", "run", "--host=0.0.0.0", "--debug"]
+# Run Flask dev server with hot reload
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--debug"]

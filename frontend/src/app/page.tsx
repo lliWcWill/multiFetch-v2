@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import JSZip from 'jszip';
 import { useConfigStore, SUPPORTED_LANGUAGES } from '@/stores/configStore';
 import { useJobStore, type JobItem, type Platform } from '@/stores/jobStore';
 import { validateUrls, createJob, startJob, validateApiKey, ApiError } from '@/lib/api';
@@ -81,6 +82,45 @@ const Icons = {
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
   ),
+  ChevronLeft: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  ),
+  ChevronRight: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  ),
+  Pin: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+    </svg>
+  ),
+  PinOff: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+      <line x1="2" y1="2" x2="22" y2="22"/>
+    </svg>
+  ),
+  Copy: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  ),
+  Eye: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  ),
+  EyeOff: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ),
 };
 
 // Platform icon component
@@ -100,23 +140,43 @@ function ConfigPanel() {
     isApiKeyValid,
     isValidating,
     validationError,
+    sidebarCollapsed,
+    sidebarPinned,
     setApiKey,
     setLanguage,
     setIsDevTier,
     setApiKeyValidation,
     setValidating,
+    setSidebarCollapsed,
+    setSidebarPinned,
   } = useConfigStore();
+
+  const [isHovering, setIsHovering] = useState(false);
+  const [wasJustValidated, setWasJustValidated] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Auto-collapse when API key is validated (but not if pinned)
+  useEffect(() => {
+    if (isApiKeyValid && !sidebarPinned && wasJustValidated) {
+      const timer = setTimeout(() => {
+        setSidebarCollapsed(true);
+      }, 2000); // 2 second delay so user sees the success state
+      return () => clearTimeout(timer);
+    }
+  }, [isApiKeyValid, sidebarPinned, wasJustValidated, setSidebarCollapsed]);
 
   // Debounced API key validation
   useEffect(() => {
     if (!apiKey) {
       setApiKeyValidation(null);
+      setWasJustValidated(false);
       return;
     }
 
     // Basic format check immediately
     if (!apiKey.startsWith('gsk_') || apiKey.length < 20) {
       setApiKeyValidation(false, 'Invalid API key format');
+      setWasJustValidated(false);
       return;
     }
 
@@ -126,6 +186,9 @@ function ConfigPanel() {
       try {
         const result = await validateApiKey(apiKey);
         setApiKeyValidation(result.valid, result.error);
+        if (result.valid) {
+          setWasJustValidated(true);
+        }
       } catch (error) {
         if (error instanceof ApiError) {
           setApiKeyValidation(false, error.message);
@@ -138,143 +201,237 @@ function ConfigPanel() {
     return () => clearTimeout(timer);
   }, [apiKey, setApiKeyValidation, setValidating]);
 
+  // Handle mouse leave - collapse if not pinned
+  const handleMouseLeave = useCallback(() => {
+    setIsHovering(false);
+    if (!sidebarPinned && !sidebarCollapsed) {
+      // Small delay before collapsing
+      setTimeout(() => {
+        setSidebarCollapsed(true);
+      }, 300);
+    }
+  }, [sidebarPinned, sidebarCollapsed, setSidebarCollapsed]);
+
+  // Handle mouse enter on hover zone
+  const handleHoverZoneEnter = useCallback(() => {
+    if (sidebarCollapsed) {
+      setIsHovering(true);
+      setSidebarCollapsed(false);
+    }
+  }, [sidebarCollapsed, setSidebarCollapsed]);
+
+  // Determine if sidebar should be shown expanded
+  const isExpanded = !sidebarCollapsed;
+
   return (
-    <aside className="w-72 bg-[var(--bg-secondary)] border-r border-[var(--border-subtle)] flex flex-col">
-      {/* Logo */}
-      <div className="p-5 border-b border-[var(--border-subtle)]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-green)] flex items-center justify-center">
-            <Icons.Terminal />
-          </div>
-          <div>
-            <h1 className="font-mono font-bold text-lg tracking-tight">MultiFetch</h1>
-            <p className="text-xs text-[var(--text-muted)] font-mono">v2.0.0</p>
-          </div>
-        </div>
-      </div>
+    <>
+      {/* Hover zone when collapsed - triggers expand on hover */}
+      {sidebarCollapsed && (
+        <div
+          className="fixed left-14 top-0 w-2 h-full z-30 cursor-pointer"
+          onMouseEnter={handleHoverZoneEnter}
+        />
+      )}
 
-      {/* Config */}
-      <div className="flex-1 p-5 space-y-6 overflow-y-auto">
-        {/* API Key */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-            <Icons.Key />
-            Groq API Key
-          </label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="gsk_..."
-            className={`input-terminal w-full px-3 py-2.5 rounded-md text-sm ${
-              validationError ? 'border-[var(--accent-red)]' : ''
-            }`}
-          />
-          {isValidating && (
-            <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-              <Icons.Loader /> Validating...
-            </p>
+      {/* Single sidebar - transitions between collapsed (w-14) and expanded (w-72) */}
+      <aside
+        className={`bg-[var(--bg-secondary)] border-r border-[var(--border-subtle)] flex flex-col transition-all duration-300 ease-in-out flex-shrink-0 ${
+          isExpanded ? 'w-72' : 'w-14'
+        }`}
+        onMouseLeave={!sidebarPinned && isExpanded ? handleMouseLeave : undefined}
+      >
+        {/* Logo + Controls */}
+        <div className={`border-b border-[var(--border-subtle)] ${isExpanded ? 'p-5' : 'p-2 flex flex-col items-center'}`}>
+          {isExpanded ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-green)] flex items-center justify-center flex-shrink-0">
+                  <Icons.Terminal />
+                </div>
+                <div>
+                  <h1 className="font-mono font-bold text-lg tracking-tight">MultiFetch</h1>
+                  <p className="text-xs text-[var(--text-muted)] font-mono">v2.0.0</p>
+                </div>
+              </div>
+
+              {/* Collapse + Pin buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setSidebarPinned(!sidebarPinned)}
+                  className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                    sidebarPinned
+                      ? 'bg-[var(--accent-cyan)] text-[var(--bg-primary)]'
+                      : 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                  title={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+                >
+                  {sidebarPinned ? <Icons.Pin /> : <Icons.PinOff />}
+                </button>
+                <button
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="w-7 h-7 rounded-md bg-[var(--bg-tertiary)] hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="Collapse sidebar"
+                >
+                  <Icons.ChevronLeft />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-green)] flex items-center justify-center mb-2">
+                <Icons.Terminal />
+              </div>
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="w-8 h-8 rounded-md bg-[var(--bg-tertiary)] hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                title="Expand sidebar"
+              >
+                <Icons.ChevronRight />
+              </button>
+            </>
           )}
-          {validationError && (
-            <p className="text-xs text-[var(--accent-red)]">{validationError}</p>
-          )}
-          {!apiKey && (
-            <p className="text-xs text-[var(--text-muted)]">
-              Get key at{' '}
-              <a href="https://console.groq.com" target="_blank" className="text-[var(--accent-cyan)] hover:underline">
-                console.groq.com
-              </a>
-            </p>
-          )}
         </div>
 
-        {/* Language */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-            <Icons.Globe />
-            Language
-          </label>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="input-terminal w-full px-3 py-2.5 rounded-md text-sm cursor-pointer"
-          >
-            {SUPPORTED_LANGUAGES.map((lang) => (
-              <option key={lang.code} value={lang.code}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Dev Tier Toggle */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-            <Icons.Zap />
-            API Tier
-          </label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsDevTier(false)}
-              className={`flex-1 px-3 py-2 rounded-md text-sm font-mono transition-all ${
-                !isDevTier
-                  ? 'bg-[var(--accent-cyan)] text-[var(--bg-primary)]'
-                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-              }`}
-            >
-              Free (25MB)
-            </button>
-            <button
-              onClick={() => setIsDevTier(true)}
-              className={`flex-1 px-3 py-2 rounded-md text-sm font-mono transition-all ${
-                isDevTier
-                  ? 'bg-[var(--accent-cyan)] text-[var(--bg-primary)]'
-                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-              }`}
-            >
-              Dev (100MB)
-            </button>
-          </div>
-        </div>
-
-        {/* Supported Platforms */}
-        <div className="pt-4 border-t border-[var(--border-subtle)]">
-          <p className="text-xs font-medium text-[var(--text-muted)] mb-3 uppercase tracking-wider">
-            Supported Platforms
-          </p>
+        {/* Config - only show when expanded */}
+        <div className={`flex-1 overflow-y-auto transition-opacity duration-200 ${isExpanded ? 'p-5 space-y-6 opacity-100' : 'opacity-0 hidden'}`}>
+          {/* API Key */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--youtube)] text-white">
-                <Icons.YouTube />
-              </span>
-              <span className="text-[var(--text-secondary)]">YouTube</span>
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+              <Icons.Key />
+              Groq API Key
+            </label>
+            <div className="relative">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="gsk_..."
+                className={`input-terminal w-full px-3 py-2.5 pr-10 rounded-md text-sm ${
+                  validationError ? 'border-[var(--accent-red)]' : ''
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                title={showApiKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showApiKey ? <Icons.EyeOff /> : <Icons.Eye />}
+              </button>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--instagram)] text-white">
-                <Icons.Instagram />
-              </span>
-              <span className="text-[var(--text-secondary)]">Instagram</span>
+            {isValidating && (
+              <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
+                <Icons.Loader /> Validating...
+              </p>
+            )}
+            {validationError && (
+              <p className="text-xs text-[var(--accent-red)]">{validationError}</p>
+            )}
+            {isApiKeyValid && (
+              <p className="text-xs text-[var(--accent-green)] flex items-center gap-1">
+                <Icons.Check /> API key validated
+              </p>
+            )}
+            {!apiKey && (
+              <p className="text-xs text-[var(--text-muted)]">
+                Get key at{' '}
+                <a href="https://console.groq.com" target="_blank" className="text-[var(--accent-cyan)] hover:underline">
+                  console.groq.com
+                </a>
+              </p>
+            )}
+          </div>
+
+          {/* Language */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+              <Icons.Globe />
+              Language
+            </label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="input-terminal w-full px-3 py-2.5 rounded-md text-sm cursor-pointer"
+            >
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Dev Tier Toggle */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+              <Icons.Zap />
+              API Tier
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsDevTier(false)}
+                className={`flex-1 px-3 py-2 rounded-md text-sm font-mono transition-all ${
+                  !isDevTier
+                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-primary)]'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+                }`}
+              >
+                Free (25MB)
+              </button>
+              <button
+                onClick={() => setIsDevTier(true)}
+                className={`flex-1 px-3 py-2 rounded-md text-sm font-mono transition-all ${
+                  isDevTier
+                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-primary)]'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+                }`}
+              >
+                Dev (100MB)
+              </button>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--tiktok)] text-[var(--bg-primary)]">
-                <Icons.TikTok />
-              </span>
-              <span className="text-[var(--text-secondary)]">TikTok</span>
+          </div>
+
+          {/* Supported Platforms */}
+          <div className="pt-4 border-t border-[var(--border-subtle)]">
+            <p className="text-xs font-medium text-[var(--text-muted)] mb-3 uppercase tracking-wider">
+              Supported Platforms
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--youtube)] text-white">
+                  <Icons.YouTube />
+                </span>
+                <span className="text-[var(--text-secondary)]">YouTube</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--instagram)] text-white">
+                  <Icons.Instagram />
+                </span>
+                <span className="text-[var(--text-secondary)]">Instagram</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-6 h-6 rounded flex items-center justify-center bg-[var(--tiktok)] text-[var(--bg-primary)]">
+                  <Icons.TikTok />
+                </span>
+                <span className="text-[var(--text-secondary)]">TikTok</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Status */}
-      <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
-        <div className="flex items-center gap-2">
-          <span className={`status-dot ${isApiKeyValid ? 'status-success' : apiKey ? 'status-pending' : 'status-pending'}`} />
-          <span className="text-xs text-[var(--text-muted)] font-mono">
-            {isApiKeyValid ? 'API Connected' : apiKey ? 'Validating...' : 'API Key Required'}
-          </span>
+        {/* Status */}
+        <div className={`border-t border-[var(--border-subtle)] bg-[var(--bg-tertiary)] ${isExpanded ? 'p-4' : 'p-2 flex justify-center'}`}>
+          <div className={`flex items-center ${isExpanded ? 'gap-2' : ''}`}>
+            <span className={`status-dot ${isApiKeyValid ? 'status-success' : apiKey ? 'status-pending' : 'status-pending'}`} />
+            {isExpanded && (
+              <span className="text-xs text-[var(--text-muted)] font-mono">
+                {isApiKeyValid ? 'API Connected' : apiKey ? 'Validating...' : 'API Key Required'}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -290,7 +447,7 @@ function UrlInput() {
     setIsValidating,
   } = useJobStore();
 
-  const { isApiKeyValid, language } = useConfigStore();
+  const { apiKey, isApiKeyValid, language, isDevTier } = useConfigStore();
   const { setCurrentJob, setProcessing, updateJobItem } = useJobStore();
 
   // Parse URLs from input
@@ -351,7 +508,7 @@ function UrlInput() {
   });
 
   const handleProcess = useCallback(async () => {
-    if (!isApiKeyValid || validUrls.length === 0) return;
+    if (!isApiKeyValid || !apiKey || validUrls.length === 0) return;
 
     setProcessing(true);
 
@@ -364,13 +521,13 @@ function UrlInput() {
       );
       setCurrentJob(job);
 
-      // Start processing
-      await startJob(job.id);
+      // Start processing with API key
+      await startJob(job.id, apiKey, { isDevTier });
     } catch (error) {
       console.error('Failed to create job:', error);
       setProcessing(false, error instanceof Error ? error.message : 'Failed to create job');
     }
-  }, [isApiKeyValid, validUrls, language, setCurrentJob, setProcessing]);
+  }, [isApiKeyValid, apiKey, validUrls, language, isDevTier, setCurrentJob, setProcessing]);
 
   return (
     <div className="card p-5 space-y-4">
@@ -469,11 +626,32 @@ function UrlInput() {
 // Result Card Component
 function ResultCard({ item }: { item: JobItem }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const statusClass = item.status === 'completed' ? 'status-success' :
                       item.status === 'failed' ? 'status-error' :
                       item.status === 'running' ? 'status-processing' :
                       'status-pending';
+
+  const handleCopy = useCallback(async () => {
+    if (item.transcript) {
+      await navigator.clipboard.writeText(item.transcript);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [item.transcript]);
+
+  const handleDownloadTxt = useCallback(() => {
+    if (item.transcript) {
+      const blob = new Blob([item.transcript], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${item.title || item.video_id || 'transcript'}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, [item.transcript, item.title, item.video_id]);
 
   return (
     <div className="card-elevated p-4 space-y-3 animate-fade-in">
@@ -499,7 +677,18 @@ function ResultCard({ item }: { item: JobItem }) {
             </p>
           </div>
         </div>
-        <span className={`status-dot flex-shrink-0 ${statusClass}`} />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {item.status === 'completed' && item.transcript && (
+            <button
+              onClick={handleCopy}
+              className="w-7 h-7 rounded-md bg-[var(--bg-tertiary)] hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title={copied ? 'Copied!' : 'Copy transcript'}
+            >
+              {copied ? <Icons.Check /> : <Icons.Copy />}
+            </button>
+          )}
+          <span className={`status-dot ${statusClass}`} />
+        </div>
       </div>
 
       {item.status === 'running' && (
@@ -533,11 +722,10 @@ function ResultCard({ item }: { item: JobItem }) {
             >
               {expanded ? 'Show Less' : 'Show More'}
             </button>
-            <button className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
-              <Icons.Download />
-              MP3
-            </button>
-            <button className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+            <button
+              onClick={handleDownloadTxt}
+              className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5"
+            >
               <Icons.FileText />
               TXT
             </button>
@@ -555,6 +743,68 @@ export default function Home() {
   const results = currentJob?.items ?? [];
   const completedCount = currentJob?.completed_count ?? 0;
   const hasCompletedItems = completedCount > 0;
+
+  const completedItems = useMemo(() => {
+    const items = results.filter((item) => item.status === 'completed' && item.transcript);
+    console.log('completedItems computed:', items.length, 'from', results.length, 'results');
+    return items;
+  }, [results]);
+
+  const handleExportJSON = useCallback(() => {
+    console.log('Export JSON clicked', { completedItems, results });
+    if (completedItems.length === 0) {
+      console.log('No completed items to export');
+      return;
+    }
+
+    const exportData = completedItems.map((item) => ({
+      url: item.url,
+      title: item.title || item.video_id || 'Untitled',
+      platform: item.platform,
+      video_id: item.video_id,
+      transcript: item.transcript,
+    }));
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcripts-${new Date().toISOString().slice(0, 10)}.json`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log('JSON export completed');
+  }, [completedItems]);
+
+  const handleExportZIP = useCallback(async () => {
+    console.log('Export ZIP clicked', { completedItems, results });
+    if (completedItems.length === 0) {
+      console.log('No completed items to export');
+      return;
+    }
+
+    const zip = new JSZip();
+
+    completedItems.forEach((item, index) => {
+      const filename = `${item.title || item.video_id || `transcript-${index + 1}`}.txt`
+        .replace(/[/\\?%*:|"<>]/g, '-'); // Sanitize filename
+      zip.file(filename, item.transcript || '');
+    });
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcripts-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log('ZIP export completed');
+  }, [completedItems]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -599,11 +849,17 @@ export default function Home() {
                 </h2>
                 {hasCompletedItems && (
                   <div className="flex gap-2">
-                    <button className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                    <button
+                      onClick={handleExportZIP}
+                      className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5"
+                    >
                       <Icons.Download />
                       Export ZIP
                     </button>
-                    <button className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                    <button
+                      onClick={handleExportJSON}
+                      className="btn-secondary px-3 py-1.5 rounded text-xs flex items-center gap-1.5"
+                    >
                       <Icons.FileText />
                       Export JSON
                     </button>

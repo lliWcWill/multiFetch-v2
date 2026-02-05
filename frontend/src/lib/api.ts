@@ -200,9 +200,18 @@ export async function cancelJob(jobId: string): Promise<Job> {
 /**
  * Start processing a pending job.
  */
-export async function startJob(jobId: string): Promise<Job> {
+export async function startJob(
+  jobId: string,
+  apiKey: string,
+  options?: { cookiesPath?: string; isDevTier?: boolean }
+): Promise<Job> {
   return fetchApi<Job>(`/api/jobs/${jobId}/start`, {
     method: 'POST',
+    body: JSON.stringify({
+      api_key: apiKey,
+      cookies_path: options?.cookiesPath,
+      is_dev_tier: options?.isDevTier ?? false,
+    }),
   });
 }
 
