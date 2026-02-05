@@ -12,7 +12,7 @@ import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Optional
+from typing import ClassVar, Optional
 
 from groq import Groq
 
@@ -36,8 +36,8 @@ class RateLimiter:
     Implements token bucket algorithm with sliding window.
     """
 
-    _instances: dict[str, "RateLimiter"] = {}
-    _instances_lock = threading.Lock()
+    _instances: ClassVar[dict[str, "RateLimiter"]] = {}
+    _instances_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, rpm: int = DEFAULT_RPM):
         """
@@ -101,6 +101,7 @@ def transcribe_with_retry(
     language: str = "en",
     max_retries: int = 5,
     rate_limiter: Optional[RateLimiter] = None,
+    *,
     is_dev_tier: bool = False,
 ) -> Optional[str]:
     """
@@ -198,6 +199,7 @@ def transcribe_audio(
     job_id: Optional[str] = None,
     url: Optional[str] = None,
     language: str = "en",
+    *,
     is_dev_tier: bool = False,
 ) -> Optional[str]:
     """
@@ -285,6 +287,35 @@ def transcribe_audio(
         return transcription
 
 
+def _compute_num_workers(duration_minutes: float, num_chunks: int, is_dev_tier: bool) -> int:
+    """
+    Compute optimal number of parallel workers based on audio duration and tier.
+
+    Scaling strategy:
+    - Short (<30 min): Sequential (1 worker) for simplicity
+    - Medium (30-120 min): Scale based on chunks, dev tier gets more workers
+    - Long (120+ min): More conservative to avoid rate limits
+
+    Args:
+        duration_minutes: Total audio duration in minutes
+        num_chunks: Number of chunks to process
+        is_dev_tier: Whether user has dev tier (higher rate limits)
+
+    Returns:
+        Number of parallel workers to use
+    """
+    if duration_minutes < 30:
+        return 1
+    elif duration_minutes < 120:
+        base = 5 if is_dev_tier else 3
+        max_workers = 10 if is_dev_tier else 5
+        return min(max_workers, max(base, num_chunks // 5))
+    else:
+        base = 4 if is_dev_tier else 2
+        max_workers = 8 if is_dev_tier else 3
+        return min(max_workers, max(base, num_chunks // 10))
+
+
 def _transcribe_parallel(
     client: Groq,
     chunks: list[dict],
@@ -300,13 +331,7 @@ def _transcribe_parallel(
 
     # Calculate optimal workers
     num_chunks = len(chunks)
-    if duration_minutes < 30:
-        num_workers = 1
-    elif duration_minutes < 120:
-        num_workers = min(10 if is_dev_tier else 5, max(5 if is_dev_tier else 3, num_chunks // 5))
-    else:
-        num_workers = min(8 if is_dev_tier else 3, max(4 if is_dev_tier else 2, num_chunks // 10))
-
+    num_workers = _compute_num_workers(duration_minutes, num_chunks, is_dev_tier)
     logger.info(f"Using {num_workers} parallel workers for {num_chunks} chunks")
 
     transcriptions: dict[int, str] = {}

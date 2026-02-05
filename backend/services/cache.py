@@ -35,9 +35,9 @@ def get_cache_key(url: str, operation: str) -> str:
         operation: The operation type (e.g., 'download', 'transcription')
 
     Returns:
-        MD5 hash string for use as cache filename
+        SHA256 hash string for use as cache filename
     """
-    return hashlib.md5(f"{url}:{operation}".encode()).hexdigest()
+    return hashlib.sha256(f"{url}:{operation}".encode()).hexdigest()
 
 
 def load_from_cache(cache_key: str, ttl_seconds: Optional[int] = None) -> Optional[dict]:
@@ -71,7 +71,7 @@ def load_from_cache(cache_key: str, ttl_seconds: Optional[int] = None) -> Option
 
     # Load and validate JSON
     try:
-        with open(cache_file, "r", encoding="utf-8") as f:
+        with open(cache_file, encoding="utf-8") as f:
             data = json.load(f)
         logger.debug(f"Cache hit for {cache_key}")
         return data
@@ -106,11 +106,11 @@ def save_to_cache(cache_key: str, data: dict) -> bool:
             json.dump(data, f, ensure_ascii=False, indent=2)
         logger.debug(f"Cached data for {cache_key}")
         return True
-    except (TypeError, ValueError) as e:
-        logger.error(f"Data not JSON-serializable for {cache_key}: {e}")
+    except (TypeError, ValueError):
+        logger.exception(f"Data not JSON-serializable for {cache_key}")
         return False
-    except OSError as e:
-        logger.error(f"Error writing cache file: {e}")
+    except OSError:
+        logger.exception("Error writing cache file")
         return False
 
 

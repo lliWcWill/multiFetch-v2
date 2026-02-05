@@ -9,7 +9,8 @@ import contextlib
 import logging
 import os
 import tempfile
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 from pydub import AudioSegment
 
@@ -22,6 +23,7 @@ MIN_CHUNK_DURATION_MS = 30000  # 30 seconds minimum
 MAX_CHUNK_DURATION_FREE_MS = 600000  # 10 minutes max for free tier
 MAX_CHUNK_DURATION_DEV_MS = 900000  # 15 minutes max for dev tier
 OVERLAP_MS = 500  # 0.5 seconds overlap between chunks
+PARALLEL_THRESHOLD_MIN = 30  # Use parallel processing for videos longer than this
 
 
 def chunk_audio(
@@ -266,4 +268,8 @@ def should_chunk_audio(audio_path: str, is_dev_tier: bool = False) -> bool:
     # Always chunk if over limits
     max_direct_size = DEV_TIER_MAX_MB * 0.95 if is_dev_tier else FREE_TIER_MAX_MB * 0.92
 
-    return size_mb > 25 or duration_min > 30 or size_mb > max_direct_size
+    return (
+        size_mb > FREE_TIER_MAX_MB
+        or duration_min > PARALLEL_THRESHOLD_MIN
+        or size_mb > max_direct_size
+    )

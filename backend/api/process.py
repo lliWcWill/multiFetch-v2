@@ -20,7 +20,7 @@ from api.sse import (
     notify_job_started,
 )
 from services.downloader import download_audio
-from services.job_manager import Job, JobStatus, JobType, job_manager
+from services.job_manager import Job, JobItem, JobStatus, JobType, job_manager
 from services.transcriber import transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,139 @@ def start_job(job_id: str):
     })
 
 
+def _process_single_item(
+    job: Job,
+    item: JobItem,
+    job_id: str,
+    api_key: str,
+    cookies_path: Optional[str],
+    is_dev_tier: bool,
+    item_temp_dir: str,
+    status_prefix: str = "starting",
+) -> bool:
+    """
+    Process a single item (download -> transcribe).
+
+    Args:
+        job: The job object
+        item: The item to process
+        job_id: Job ID for updates
+        api_key: Groq API key
+        cookies_path: Optional cookies file path
+        is_dev_tier: Whether user has dev tier
+        item_temp_dir: Temp directory for this item
+        status_prefix: Status message prefix (e.g., "starting" or "retrying")
+
+    Returns:
+        True if processing succeeded, False otherwise
+    """
+    url = item.url
+
+    # Update item status
+    job_manager.update_item_status(job_id, url, JobStatus.RUNNING, progress=0)
+    notify_item_progress(job_id, url, 0, status_prefix)
+
+    try:
+        # Download audio
+        audio_path, title, info = download_audio(
+            url=url,
+            job_id=job_id,
+            cookies_path=cookies_path,
+            output_dir=item_temp_dir,
+        )
+
+        if not audio_path:
+            error = info.get("error", "Download failed") if info else "Download failed"
+            logger.error(f"Download failed for {url}: {error}")
+            job_manager.update_item_status(job_id, url, JobStatus.FAILED, error=error)
+            notify_item_failed(job_id, url, error)
+            return False
+
+        logger.info(f"Downloaded: {title}")
+        job_manager.update_item_status(
+            job_id, url, JobStatus.RUNNING,
+            progress=50,
+            title=title,
+            audio_path=audio_path,
+        )
+        notify_item_progress(job_id, url, 50, "downloaded")
+
+        # Transcribe (skip if download-only job)
+        if job.job_type in (JobType.TRANSCRIBE, JobType.FULL):
+            # Check for cancellation before transcription
+            current_job = job_manager.get_job(job_id)
+            if not current_job or current_job.status == JobStatus.CANCELLED:
+                logger.info(f"Job {job_id} cancelled before transcription")
+                return False
+
+            transcript = transcribe_audio(
+                audio_path=audio_path,
+                api_key=api_key,
+                job_id=job_id,
+                url=url,
+                language=job.language,
+                is_dev_tier=is_dev_tier,
+            )
+
+            if transcript:
+                job_manager.update_item_status(
+                    job_id, url, JobStatus.COMPLETED,
+                    progress=100,
+                    transcript=transcript,
+                )
+                notify_item_complete(job_id, url, title=title, transcript=transcript)
+                logger.info(f"Transcription complete for {url}")
+                return True
+            else:
+                job_manager.update_item_status(
+                    job_id, url, JobStatus.FAILED,
+                    error="Transcription failed",
+                )
+                notify_item_failed(job_id, url, "Transcription failed")
+                logger.error(f"Transcription failed for {url}")
+                return False
+        else:
+            # Download-only job
+            job_manager.update_item_status(
+                job_id, url, JobStatus.COMPLETED,
+                progress=100,
+            )
+            notify_item_complete(job_id, url, title=title)
+            logger.info(f"Download complete for {url}")
+            return True
+
+    except Exception as e:
+        logger.exception(f"Error processing {url}")
+        job_manager.update_item_status(job_id, url, JobStatus.FAILED, error=str(e))
+        notify_item_failed(job_id, url, str(e))
+        return False
+
+
+def _finalize_job(job_id: str, job_temp_dir: str) -> None:
+    """Cleanup temp directory and finalize job status."""
+    # Cleanup temp directory
+    try:
+        shutil.rmtree(job_temp_dir)
+        logger.debug(f"Cleaned up temp dir: {job_temp_dir}")
+    except Exception:
+        logger.exception(f"Failed to cleanup temp dir: {job_temp_dir}")
+
+    # Finalize job status
+    job = job_manager.get_job(job_id)
+    if job and job.status == JobStatus.RUNNING:
+        all_done = all(
+            i.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+            for i in job.items
+        )
+        if all_done:
+            all_failed = all(i.status == JobStatus.FAILED for i in job.items)
+            final_status = JobStatus.FAILED if all_failed else JobStatus.COMPLETED
+            job_manager.update_job_status(job_id, final_status)
+
+    notify_job_complete(job_id)
+    logger.info(f"Job {job_id} finished")
+
+
 def _process_job(
     job_id: str,
     api_key: str,
@@ -110,118 +243,19 @@ def _process_job(
                 logger.info(f"Job {job_id} cancelled, stopping processing")
                 break
 
-            url = item.url
-            logger.info(f"Processing URL: {url}")
+            logger.info(f"Processing URL: {item.url}")
 
-            # Update item status
-            job_manager.update_item_status(job_id, url, JobStatus.RUNNING, progress=0)
-            notify_item_progress(job_id, url, 0, "starting")
+            # Create item-specific temp directory
+            item_temp_dir = os.path.join(job_temp_dir, f"item_{item.video_id or 'unknown'}")
+            os.makedirs(item_temp_dir, exist_ok=True)
 
-            try:
-                # Create item-specific temp directory
-                item_temp_dir = os.path.join(job_temp_dir, f"item_{item.video_id or 'unknown'}")
-                os.makedirs(item_temp_dir, exist_ok=True)
-
-                # Download audio
-                audio_path, title, info = download_audio(
-                    url=url,
-                    job_id=job_id,
-                    cookies_path=cookies_path,
-                    output_dir=item_temp_dir,
-                )
-
-                if not audio_path:
-                    error = info.get("error", "Download failed") if info else "Download failed"
-                    logger.error(f"Download failed for {url}: {error}")
-                    job_manager.update_item_status(
-                        job_id, url, JobStatus.FAILED,
-                        error=error,
-                    )
-                    notify_item_failed(job_id, url, error)
-                    continue
-
-                logger.info(f"Downloaded: {title}")
-                job_manager.update_item_status(
-                    job_id, url, JobStatus.RUNNING,
-                    progress=50,
-                    title=title,
-                    audio_path=audio_path,
-                )
-                notify_item_progress(job_id, url, 50, "downloaded")
-
-                # Transcribe (skip if download-only job)
-                if job.job_type in (JobType.TRANSCRIBE, JobType.FULL):
-                    # Check for cancellation again
-                    job = job_manager.get_job(job_id)
-                    if not job or job.status == JobStatus.CANCELLED:
-                        logger.info(f"Job {job_id} cancelled before transcription")
-                        break
-
-                    transcript = transcribe_audio(
-                        audio_path=audio_path,
-                        api_key=api_key,
-                        job_id=job_id,
-                        url=url,
-                        language=job.language,
-                        is_dev_tier=is_dev_tier,
-                    )
-
-                    if transcript:
-                        job_manager.update_item_status(
-                            job_id, url, JobStatus.COMPLETED,
-                            progress=100,
-                            transcript=transcript,
-                        )
-                        notify_item_complete(job_id, url, title=title, transcript=transcript)
-                        logger.info(f"Transcription complete for {url}")
-                    else:
-                        job_manager.update_item_status(
-                            job_id, url, JobStatus.FAILED,
-                            error="Transcription failed",
-                        )
-                        notify_item_failed(job_id, url, "Transcription failed")
-                        logger.error(f"Transcription failed for {url}")
-                else:
-                    # Download-only job
-                    job_manager.update_item_status(
-                        job_id, url, JobStatus.COMPLETED,
-                        progress=100,
-                    )
-                    notify_item_complete(job_id, url, title=title)
-                    logger.info(f"Download complete for {url}")
-
-            except Exception as e:
-                logger.exception(f"Error processing {url}")
-                job_manager.update_item_status(
-                    job_id, url, JobStatus.FAILED,
-                    error=str(e),
-                )
-                notify_item_failed(job_id, url, str(e))
+            _process_single_item(
+                job, item, job_id, api_key, cookies_path, is_dev_tier,
+                item_temp_dir, status_prefix="starting",
+            )
 
     finally:
-        # Cleanup temp directory
-        try:
-            shutil.rmtree(job_temp_dir)
-            logger.debug(f"Cleaned up temp dir: {job_temp_dir}")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup temp dir: {e}")
-
-        # Finalize job status
-        job = job_manager.get_job(job_id)
-        if job and job.status == JobStatus.RUNNING:
-            # Job completed normally - status will be set by update_item_status
-            # when all items are done, but ensure it's marked
-            all_done = all(
-                i.status in (JobStatus.COMPLETED, JobStatus.FAILED)
-                for i in job.items
-            )
-            if all_done:
-                all_failed = all(i.status == JobStatus.FAILED for i in job.items)
-                final_status = JobStatus.FAILED if all_failed else JobStatus.COMPLETED
-                job_manager.update_job_status(job_id, final_status)
-
-        notify_job_complete(job_id)
-        logger.info(f"Job {job_id} finished")
+        _finalize_job(job_id, job_temp_dir)
 
 
 @process_bp.route("/jobs/<job_id>/cancel", methods=["POST"])
@@ -342,79 +376,14 @@ def _retry_failed_items(
                 continue
 
             logger.info(f"Retrying URL: {url}")
-            job_manager.update_item_status(job_id, url, JobStatus.RUNNING, progress=0)
-            notify_item_progress(job_id, url, 0, "retrying")
 
-            try:
-                item_temp_dir = os.path.join(job_temp_dir, f"item_{item.video_id or 'unknown'}")
-                os.makedirs(item_temp_dir, exist_ok=True)
+            item_temp_dir = os.path.join(job_temp_dir, f"item_{item.video_id or 'unknown'}")
+            os.makedirs(item_temp_dir, exist_ok=True)
 
-                audio_path, title, info = download_audio(
-                    url=url,
-                    job_id=job_id,
-                    cookies_path=cookies_path,
-                    output_dir=item_temp_dir,
-                )
-
-                if not audio_path:
-                    error = info.get("error", "Download failed") if info else "Download failed"
-                    job_manager.update_item_status(job_id, url, JobStatus.FAILED, error=error)
-                    notify_item_failed(job_id, url, error)
-                    continue
-
-                job_manager.update_item_status(
-                    job_id, url, JobStatus.RUNNING,
-                    progress=50, title=title, audio_path=audio_path,
-                )
-
-                if job.job_type in (JobType.TRANSCRIBE, JobType.FULL):
-                    transcript = transcribe_audio(
-                        audio_path=audio_path,
-                        api_key=api_key,
-                        job_id=job_id,
-                        url=url,
-                        language=job.language,
-                        is_dev_tier=is_dev_tier,
-                    )
-
-                    if transcript:
-                        job_manager.update_item_status(
-                            job_id, url, JobStatus.COMPLETED,
-                            progress=100, transcript=transcript,
-                        )
-                        notify_item_complete(job_id, url, title=title, transcript=transcript)
-                    else:
-                        job_manager.update_item_status(
-                            job_id, url, JobStatus.FAILED,
-                            error="Transcription failed",
-                        )
-                        notify_item_failed(job_id, url, "Transcription failed")
-                else:
-                    job_manager.update_item_status(
-                        job_id, url, JobStatus.COMPLETED, progress=100,
-                    )
-                    notify_item_complete(job_id, url, title=title)
-
-            except Exception as e:
-                logger.exception(f"Error retrying {url}")
-                job_manager.update_item_status(job_id, url, JobStatus.FAILED, error=str(e))
-                notify_item_failed(job_id, url, str(e))
+            _process_single_item(
+                job, item, job_id, api_key, cookies_path, is_dev_tier,
+                item_temp_dir, status_prefix="retrying",
+            )
 
     finally:
-        try:
-            shutil.rmtree(job_temp_dir)
-        except Exception:
-            pass
-
-        job = job_manager.get_job(job_id)
-        if job and job.status == JobStatus.RUNNING:
-            all_done = all(
-                i.status in (JobStatus.COMPLETED, JobStatus.FAILED)
-                for i in job.items
-            )
-            if all_done:
-                all_failed = all(i.status == JobStatus.FAILED for i in job.items)
-                final_status = JobStatus.FAILED if all_failed else JobStatus.COMPLETED
-                job_manager.update_job_status(job_id, final_status)
-
-        notify_job_complete(job_id)
+        _finalize_job(job_id, job_temp_dir)

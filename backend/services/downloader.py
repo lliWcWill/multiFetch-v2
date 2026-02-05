@@ -11,8 +11,9 @@ import re
 import shutil
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Optional
 
 import yt_dlp
 from pydub import AudioSegment
@@ -58,7 +59,7 @@ def download_audio(
     job_id: Optional[str] = None,
     cookies_path: Optional[str] = None,
     output_dir: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[str], Optional[dict]]:
+) -> tuple[Optional[str], Optional[str], Optional[dict]]:
     """
     Download audio from URL with multiple fallback strategies.
 
@@ -189,31 +190,30 @@ def download_audio(
 
                 title = info.get("title", "Unknown")
 
-                # Find the audio file
-                for file in os.listdir(temp_dir):
+                # Find audio file - single directory scan
+                downloaded_files = os.listdir(temp_dir)
+                for file in downloaded_files:
+                    file_path = os.path.join(temp_dir, file)
+
                     if file.endswith(".mp3"):
-                        file_path = os.path.join(temp_dir, file)
+                        # Already in MP3 format
                         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                         logger.info(f"Downloaded with {strategy_name}: {file_size_mb:.1f}MB")
 
-                        # Cache metadata (not file path)
                         save_to_cache(cache_key, {
                             "title": title,
                             "duration": info.get("duration"),
                             "platform": platform,
                         })
-
                         return file_path, title, info
 
-                # If no MP3, try to convert
-                for file in os.listdir(temp_dir):
-                    if file.endswith((".mp4", ".webm", ".m4a", ".opus")):
+                    elif file.endswith((".mp4", ".webm", ".m4a", ".opus")):
+                        # Needs conversion to MP3
                         logger.info(f"Converting {file} to MP3")
-                        input_path = os.path.join(temp_dir, file)
                         output_path = os.path.join(temp_dir, f"{Path(file).stem}.mp3")
 
                         try:
-                            audio = AudioSegment.from_file(input_path)
+                            audio = AudioSegment.from_file(file_path)
                             audio.export(output_path, format="mp3", bitrate="192k")
 
                             save_to_cache(cache_key, {
@@ -254,7 +254,7 @@ def _build_download_strategies(
     cookie_file: Optional[str],
     video_info: dict,
     progress_hook: Callable,
-) -> list[Tuple[str, dict]]:
+) -> list[tuple[str, dict]]:
     """Build list of download strategies based on platform."""
     strategies = []
 
