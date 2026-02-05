@@ -1,8 +1,8 @@
 # MultiFetch v2 - Progress Tracker
 
-**Last Updated**: 2026-01-25
-**Current Phase**: 3 - Frontend-Backend Integration
-**Status**: Complete
+**Last Updated**: 2026-02-04
+**Current Phase**: 4 - Download & Transcribe (Backend Complete)
+**Status**: In Progress - Frontend UI needed
 
 ---
 
@@ -25,7 +25,8 @@ main (local development)
 - [x] Phase 1 complete (frontend UI + backend venv + hot reload verified)
 - [x] Phase 2 complete: all core API endpoints working
 - [x] Phase 3 complete: frontend connected to Flask API
-- [ ] Phase 4: Download & Transcribe (next)
+- [x] Phase 4 backend complete: all services implemented
+- [ ] Phase 4 frontend: processing UI components (next)
 
 ---
 
@@ -79,13 +80,14 @@ feature/xyz → PR → main → PR → prod → GitHub Actions → Deploy
 - [x] Implement SSE hook for progress (`hooks/useSSE.ts`)
 - [x] Connect to Flask API (page.tsx updated)
 
-### Phase 4: Download & Transcribe [NOT STARTED]
-- [ ] Port download_audio_enhanced()
-- [ ] Port chunk_audio()
-- [ ] Port transcription logic
-- [ ] Port caching system
-- [ ] Create /api/jobs/* endpoints
-- [ ] Build processing UI components
+### Phase 4: Download & Transcribe [BACKEND COMPLETE]
+- [x] Create `services/cache.py` - JSON-based caching with TTL
+- [x] Create `services/downloader.py` - Multi-strategy audio download
+- [x] Create `services/audio.py` - Audio chunking with context manager
+- [x] Create `services/transcriber.py` - Groq transcription with rate limiting
+- [x] Create `api/process.py` - Job execution endpoint (/api/jobs/{id}/start)
+- [x] Register process blueprint in app.py
+- [ ] Build processing UI components (frontend)
 - [ ] End-to-end test
 
 ### Phase 5: TikTok Collections [NOT STARTED]
@@ -164,10 +166,15 @@ multiFetch-v2/
     │   ├── urls.py          # URL validation ✓
     │   ├── config.py        # Config validation ✓
     │   ├── jobs.py          # Job CRUD endpoints ✓
-    │   └── sse.py           # SSE progress streaming ✓
+    │   ├── sse.py           # SSE progress streaming ✓
+    │   └── process.py       # Job execution ✓ (Phase 4)
     ├── services/
     │   ├── platform_detector.py  # Platform detection ✓
-    │   └── job_manager.py   # Job state management ✓
+    │   ├── job_manager.py   # Job state management ✓
+    │   ├── cache.py         # JSON disk cache ✓ (Phase 4)
+    │   ├── downloader.py    # Audio download ✓ (Phase 4)
+    │   ├── audio.py         # Audio chunking ✓ (Phase 4)
+    │   └── transcriber.py   # Groq transcription ✓ (Phase 4)
     └── utils/
         └── constants.py     # Regex patterns ✓
 ```
@@ -186,6 +193,9 @@ multiFetch-v2/
 | 2026-01-21 | No co-author attribution | User preference |
 | 2026-01-25 | Zustand for state | Simple, minimal boilerplate |
 | 2026-01-25 | Persist config in localStorage | Better UX, remember settings |
+| 2026-02-04 | JSON cache (safe serialization) | Security - prevent code execution attacks |
+| 2026-02-04 | Per-API-key rate limiters | Support multi-user with different Groq keys |
+| 2026-02-04 | Check job.status for cancellation | Replaces global shutdown_requested flag |
 
 ---
 
